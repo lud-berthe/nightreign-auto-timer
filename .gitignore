@@ -1,0 +1,30 @@
+# Local environment and Python cache
+.venv/
+__pycache__/
+*.py[cod]
+
+# Personal preferences and runtime diagnostics
+/settings.json
+/settings.tmp
+/runtime-state.json
+/runtime-state.tmp
+/running-instance.json
+/timer-restart-state.json
+/timer*.jsonl
+/gamebar-url.txt
+.env
+.env.local
+
+# Never publish game saves or investigation data
+/captures/
+/archives/
+/research/
+*.sl2
+*.sl2.bak
+*.nrshot
+
+# Editor and operating-system files
+.idea/
+.vscode/
+Thumbs.db
+Desktop.ini

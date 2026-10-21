@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nightreign Timer</title>
+<style>
+:root{color-scheme:dark;--accent:#e7c98b;--count:#fff;--font:54px}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:transparent;color:#fff}
+body{font-family:Segoe UI,Arial,sans-serif;text-align:center;display:grid;place-items:start center;min-height:100vh}
+main{padding:14px 16px;width:100%;max-width:480px}
+#day,.track{display:none}
+#phase{font:clamp(16px,6vw,24px) 'Times New Roman',serif;margin:0;white-space:pre-line;text-shadow:1px 1px 2px #000}
+#clock{font-family:'Times New Roman',serif;font-weight:400;font-size:clamp(38px,22vw,var(--font));
+ line-height:1.2;font-variant-numeric:tabular-nums;color:var(--count);white-space:nowrap}
+.track{height:3px;background:#30343b;margin:8px 0 12px}#progress{height:100%;width:0;background:var(--count)}
+#status{display:none;font-size:11px;color:#afb9c4;line-height:1.4}
+</style>
+<main aria-label="Timer Nightreign" hidden>
+ <div id="day">NIGHTREIGN</div><div id="phase"></div>
+ <div id="clock" role="timer"></div><div class="track"><div id="progress"></div></div>
+ <div id="status">Connecting to timer...</div>
+</main>
+<script>
+let state=null,received=0,lastSuccess=performance.now();
+const el=id=>document.getElementById(id);
+async function poll(){
+ try{
+  const response=await fetch('state',{cache:'no-store'});
+  if(!response.ok)throw Error('Connection');
+  state=await response.json();received=performance.now();lastSuccess=received;
+  el('day').textContent=state.day?'DAY '+state.day:'NIGHTREIGN';
+  el('phase').textContent=state.title;
+  document.documentElement.style.setProperty('--font',(state.font*1.6*.88)+'px');
+  const a=Math.max(0,Math.min(1,state.background_opacity||0));
+  document.querySelector('main').style.background=`linear-gradient(to right,rgba(8,10,13,0),rgba(8,10,13,${a}) 24%,rgba(8,10,13,${a}) 76%,rgba(8,10,13,0))`;
+ }catch(error){}finally{setTimeout(poll,400)}
+}
+function render(){
+ const stale=performance.now()-lastSuccess>2500;
+ document.querySelector('main').hidden=stale||!state?.visible;
+ let left=state?.remaining;
+ if(left!==null&&left!==undefined)left=Math.max(0,left-Math.min(1,(performance.now()-received)/1000));
+ const n=Math.ceil(left||0);
+ el('clock').textContent=stale?'':left===null||left===undefined?'':String(Math.floor(n/60))+':'+String(n%60).padStart(2,'0');
+ document.documentElement.style.setProperty('--count',left!==null&&left!==undefined&&left<60?'#ff766b':'#fff');
+ el('progress').style.width=stale||!state?.duration?'0%':(Math.max(0,Math.min(1,1-left/state.duration))*100)+'%';
+ el('status').textContent=stale?'Timer disconnected · restart the app':state?.status||'Connecting to timer...';
+ el('status').style.display=stale?'block':'none';
+}
+poll();setInterval(render,100);
+</script>
+</html>
