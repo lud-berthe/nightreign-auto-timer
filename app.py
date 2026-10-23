@@ -91,7 +91,12 @@ class Panel:
         self.latest,self.read_error,self.gamebar = None,None,None
         self.last_phase,self.last_tracking,self.last_state_write = None,None,0
         self.root.title('Nightreign auto-timer')
-        self.root.iconbitmap(default=str(ROOT/'assets'/'nightreign-auto-timer.ico'))
+        # Give Windows the full-resolution image; ICO selection can expose a small icon to the shell.
+        self.icon_image = tk.PhotoImage(file=str(ROOT/'assets'/'nightreign-auto-timer.png'))
+        self.root.iconphoto(True,self.icon_image)
+        self.shell_icon = None
+        self.root.bind('<Map>',lambda event: self.root.after_idle(self.apply_shell_icon)
+                       if event.widget is self.root else None,add='+')
         self.root.configure(bg=BG)
         self.root.protocol('WM_DELETE_WINDOW',self.close)
         body = tk.Frame(root,bg=BG,padx=24,pady=14)
@@ -121,6 +126,25 @@ class Panel:
                 thread.start()
         log_event('app_opened',source=self.source)
         self.tick()
+
+    def apply_shell_icon(self):
+        # Set both window icons explicitly: the shell can otherwise enlarge Tk's small class icon.
+        if os.name!='nt' or self.stop_event.is_set():return
+        api = ctypes.WinDLL('user32')
+        api.LoadImageW.argtypes = [wintypes.HINSTANCE,wintypes.LPCWSTR,wintypes.UINT,
+                                   ctypes.c_int,ctypes.c_int,wintypes.UINT]
+        api.LoadImageW.restype = wintypes.HANDLE
+        api.GetAncestor.argtypes = [wintypes.HWND,wintypes.UINT]
+        api.GetAncestor.restype = wintypes.HWND
+        api.SendMessageW.argtypes = [wintypes.HWND,wintypes.UINT,wintypes.WPARAM,wintypes.LPARAM]
+        api.SendMessageW.restype = wintypes.LPARAM
+        if not self.shell_icon:
+            self.shell_icon = api.LoadImageW(None,str(ROOT/'assets'/'nightreign-auto-timer.ico'),
+                                            1,256,256,0x0010)
+        hwnd = api.GetAncestor(self.root.winfo_id(),2)
+        if hwnd and self.shell_icon:
+            for kind in (0,1):api.SendMessageW(hwnd,0x0080,kind,self.shell_icon)
+
 
     def save_settings(self):
         if self.ephemeral:return
@@ -247,6 +271,12 @@ class Panel:
         for thread in self.threads:thread.join(timeout=1)
         log_event('app_closed')
         self.root.destroy()
+        if self.shell_icon:
+            api = ctypes.WinDLL('user32')
+            api.DestroyIcon.argtypes = [wintypes.HICON]
+            api.DestroyIcon.restype = wintypes.BOOL
+            api.DestroyIcon(self.shell_icon)
+            self.shell_icon = None
 
 
 def main():
