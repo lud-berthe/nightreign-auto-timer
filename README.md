@@ -44,6 +44,7 @@ Press **F10** to edit the overlay in place. The preview displays **Edit / 0:00**
 - **Reset** aligns the HUD with the top of the game client area.
 - **Hide / Show** immediately affects the text and background; editing controls stay visible.
 - The opacity slider starts at **50%** and affects only the background.
+- **Outline: Off / On** toggles the outline around both timer lines immediately. It starts off and is saved with your preferences.
 - **Done** or F10 closes editing. Outside editing, clicks pass through the overlay.
 
 The compact HUD uses native-resolution text and soft left/right background edges. Text and geometry update only when their visible state changes; the game window is still checked every 50 ms for responsive tracking. Editing controls have outlined text for readability over bright scenes. Position, opacity, visibility and the shortcut are saved when changed and restored on the next launch.
@@ -59,6 +60,7 @@ Preferences are stored in **settings.json** beside the executable (or app.py whe
   "overlay_font": 34,
   "overlay_background_opacity": 0.5,
   "overlay_hidden": false,
+  "overlay_outline": false,
   "overlay_anchor_x": 0.5,
   "overlay_anchor_y": 0.0,
   "overlay_x": null,
@@ -72,7 +74,7 @@ An empty source enables automatic discovery of NR0000.sl2 and NR_TimerTests.sl2 
 
 Save entries are read and validated one at a time to limit temporary allocations. All 14 encrypted entries retain padding and checksum validation, and clock detection still rejects ambiguous layouts.
 
-Only user preferences are saved. Position values are managed by the overlay editor: anchors are relative to the game window, while x/y preserve the fallback desktop position. Calibrated phase times and automatic detection are defined in code; old internal options are ignored and removed when preferences are saved. Text outlining always adapts to screen DPI.
+Only user preferences are saved. Position values are managed by the overlay editor: anchors are relative to the game window, while x/y preserve the fallback desktop position. Calibrated phase times and automatic detection are defined in code; old internal options are ignored and removed when preferences are saved. When enabled, the timer outline adapts to screen DPI. Editing controls keep their own outline for readability.
 
 Shortcut examples include F9, Ctrl+E and Ctrl+Alt+F10. F1–F24, A–Z, 0–9 and common navigation keys are supported, with optional Ctrl, Alt and Shift. Invalid values fall back to F10; the desktop hint reports conflicts with another app.
 

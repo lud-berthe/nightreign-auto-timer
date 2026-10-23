@@ -9,5 +9,6 @@
   "overlay_x": null,
   "overlay_y": null,
   "open_with_game": false,
-  "close_with_game": false
+  "close_with_game": false,
+  "overlay_outline": false
 }

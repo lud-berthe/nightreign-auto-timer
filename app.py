@@ -35,7 +35,7 @@ CONFIG = ROOT/'settings.json'
 SETTINGS_DEFAULTS = {
     'source':'','edit_hotkey':'F10','overlay_font':34,
     'open_with_game':False,'close_with_game':False,
-    'overlay_background_opacity':0.5,'overlay_hidden':False,
+    'overlay_background_opacity':0.5,'overlay_hidden':False,'overlay_outline':False,
     'overlay_anchor_x':0.5,'overlay_anchor_y':0.0,'overlay_x':None,'overlay_y':None,
 }
 BG,TEXT,MUTED = '#10151c','#edf2f7','#98a7b8'
@@ -84,7 +84,7 @@ def load_settings(create=False):
     if not isinstance(values['source'],str):values['source'] = ''
     font = values['overlay_font']
     if type(font) is not int or not 20<=font<=72:values['overlay_font'] = 34
-    for key in ('overlay_hidden','open_with_game','close_with_game'):
+    for key in ('overlay_hidden','overlay_outline','open_with_game','close_with_game'):
         if not isinstance(values[key],bool):values[key] = False
     for key,fallback in [('overlay_anchor_x',0.5),('overlay_anchor_y',0.0)]:
         value = values[key]

@@ -77,6 +77,31 @@ def run(panel, root):
     assert top_levels=={str(widget) for widget in root.winfo_children() if isinstance(widget,tk.Toplevel)}
     assert panel.overlay.canvas.itemcget(panel.overlay.phase_item,'text')=='Edit'
     assert panel.overlay.canvas.itemcget(panel.overlay.clock_item,'text')=='0:00'
+    # The real inline control toggles only the HUD outline, without moving it.
+    original_outline = panel.settings['overlay_outline']
+    if original_outline:panel.overlay.outline_button.invoke()
+    original_position = panel.overlay.last_position
+    original_size = panel.overlay.size
+    shadow_items = (*panel.overlay.phase_shadow,*panel.overlay.clock_shadow)
+    assert all(panel.overlay.canvas.itemcget(item,'state')=='hidden' for item in shadow_items)
+    assert panel.overlay.outline_button.text=='Outline: Off'
+    outline_point = type('Point',(),dict(x_root=panel.overlay.outline_button.winfo_rootx()+1,
+                                       y_root=panel.overlay.outline_button.winfo_rooty()+1))()
+    panel.overlay.background_press(outline_point);panel.overlay.background_release(outline_point);root.update()
+    assert panel.settings['overlay_outline'] is True
+    assert panel.overlay.outline_button.text=='Outline: On'
+    assert all(panel.overlay.canvas.itemcget(item,'state')=='normal' for item in shadow_items)
+    assert panel.overlay.canvas.itemcget(panel.overlay.clock_item,'text')=='0:00'
+    assert panel.overlay.last_position==original_position and panel.overlay.size==original_size
+    panel.overlay.toggle_edit();root.update()
+    assert all(panel.overlay.canvas.itemcget(item,'state')=='normal' for item in shadow_items)
+    assert panel.overlay.canvas.itemcget(panel.overlay.clock_item,'text')=='0:59'
+    assert panel.overlay.canvas.itemcget(panel.overlay.clock_item,'fill')=='#ff766b'
+    panel.overlay.toggle_edit();root.update()
+    panel.overlay.outline_button.invoke()
+    assert panel.settings['overlay_outline'] is False
+    assert all(panel.overlay.canvas.itemcget(item,'state')=='hidden' for item in shadow_items)
+    if original_outline:panel.overlay.outline_button.invoke()
     panel.overlay.opacity_scale.set(35);root.update()
     assert panel.settings['overlay_background_opacity']==0.35
     assert float(panel.overlay.window.attributes('-alpha'))==1.0

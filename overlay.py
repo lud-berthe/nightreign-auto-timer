@@ -117,8 +117,10 @@ class CompactOverlay:
         self.opacity_scale.set(round(panel.settings.get('overlay_background_opacity',0)*100))
         self.opacity_scale.command = self.set_background_opacity
         self.opacity_scale.pack(fill='x')
+        self.outline_button = ShadowControl(self.editor,text='Outline: Off',command=self.toggle_outline)
+        self.outline_button.pack(fill='x')
         row = tk.Frame(self.editor,bg=KEY);row.pack(fill='x')
-        self.edit_buttons = []
+        self.edit_buttons = [self.outline_button]
         for title,command in [('Reset',self.reset_position),('Hide',self.toggle_visible),('Done',self.toggle_edit)]:
             button = ShadowControl(row,text=title,command=command)
             button.pack(side='left',expand=True,fill='x',padx=2)
@@ -133,6 +135,7 @@ class CompactOverlay:
         self.api = self.tracker.user
         self.handles = {}
         self.text_signature = self.render_signature = None
+        self.drawn_outline = None
         self.visibility_signature = self.backdrop_signature = None
         if self.api:
             self.api.GetParent.argtypes = [wintypes.HWND]
@@ -212,6 +215,7 @@ class CompactOverlay:
         opacity = self.panel.settings.get('overlay_background_opacity',0)
         self.opacity_label.set_text(f'Opacity {round(opacity*100)}%')
         self.hide_button.set_text('Show' if self.hidden else 'Hide')
+        self.outline_button.set_text('Outline: On' if self.panel.settings.get('overlay_outline',False) else 'Outline: Off')
         scale = self.dpi/96
         clock_px = round(self.panel.settings.get('overlay_font',34)*scale*HUD_SCALE)
         phase_px = max(12,round(clock_px/1.7))
@@ -248,18 +252,24 @@ class CompactOverlay:
         phase_text,clock_text = ('Edit','0:00') if self.editing else (self.phase_text,self.clock_text)
         if self.editing and self.hidden:phase_text,clock_text='',''
         if self.editing:color = '#ffffff'
+        outline = self.panel.settings.get('overlay_outline',False)
         signature = (self.size,self.padding,self.preview_offset,self.preview_height,self.controls_above,
-                     str(self.phase_font),str(self.clock_font),self.dpi,self.editing,self.hidden,phase_text,clock_text,color)
+                     str(self.phase_font),str(self.clock_font),self.dpi,self.editing,self.hidden,phase_text,clock_text,color,outline)
         if signature==self.text_signature:return
         self.text_signature = signature
         stroke = max(1,round(self.dpi/96))
         offsets = [(-stroke,0),(stroke,0),(0,-stroke),(0,stroke),
                    (-stroke,-stroke),(stroke,-stroke),(-stroke,stroke),(stroke,stroke)]
-        for phase_id,clock_id,(dx,dy) in zip(self.phase_shadow,self.clock_shadow,offsets):
-            self.canvas.coords(phase_id,x+dx,y+dy)
-            self.canvas.coords(clock_id,x+dx,clock_y+dy)
-            self.canvas.itemconfigure(phase_id,text=phase_text)
-            self.canvas.itemconfigure(clock_id,text=clock_text)
+        if outline!=self.drawn_outline:
+            for item in (*self.phase_shadow,*self.clock_shadow):
+                self.canvas.itemconfigure(item,state='normal' if outline else 'hidden')
+            self.drawn_outline = outline
+        if outline:
+            for phase_id,clock_id,(dx,dy) in zip(self.phase_shadow,self.clock_shadow,offsets):
+                self.canvas.coords(phase_id,x+dx,y+dy)
+                self.canvas.coords(clock_id,x+dx,clock_y+dy)
+                self.canvas.itemconfigure(phase_id,text=phase_text)
+                self.canvas.itemconfigure(clock_id,text=clock_text)
         self.canvas.coords(self.phase_item,x,y)
         self.canvas.coords(self.clock_item,x,clock_y)
         self.canvas.itemconfigure(self.phase_item,text=phase_text,fill='#edf2f7' if self.editing else '#d3d3d3')
@@ -350,6 +360,13 @@ class CompactOverlay:
     def show(self):
         if self.panel.ephemeral:self.follow_status = 'following'
         self.update_visibility()
+
+    def toggle_outline(self):
+        enabled = not self.panel.settings.get('overlay_outline',False)
+        self.panel.settings['overlay_outline'] = enabled
+        self.outline_button.set_text('Outline: On' if enabled else 'Outline: Off')
+        self.draw_text(self.clock_color)
+        self.panel.save_settings()
 
     def toggle_visible(self):
         self.hidden = not self.hidden

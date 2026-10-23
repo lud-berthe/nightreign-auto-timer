@@ -122,5 +122,21 @@ class PreferenceTests(unittest.TestCase):
         settings=load_settings()
         self.assertFalse(settings['open_with_game']);self.assertFalse(settings['close_with_game'])
 
+    def test_outline_is_off_for_new_and_existing_settings_without_the_option(self):
+        self.assertFalse(load_settings()['overlay_outline'])
+        self.config.write_text(json.dumps({'overlay_background_opacity':.7}),encoding='utf-8')
+        self.assertFalse(load_settings()['overlay_outline'])
+
+    def test_outline_preference_survives_reload_in_both_states(self):
+        for enabled in (True,False):
+            settings=load_settings();settings['overlay_outline']=enabled
+            Panel.save_settings(SimpleNamespace(ephemeral=False,settings=settings))
+            self.assertIs(load_settings()['overlay_outline'],enabled)
+
+    def test_invalid_outline_values_use_off(self):
+        for value in ('true',1,None):
+            self.config.write_text(json.dumps({'overlay_outline':value}),encoding='utf-8')
+            self.assertFalse(load_settings()['overlay_outline'])
+
 
 if __name__=='__main__':unittest.main()

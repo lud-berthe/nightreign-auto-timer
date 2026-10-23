@@ -55,7 +55,8 @@ class GameBarView:
                       'clock':clock if visible else '', 'remaining':phase.remaining,
                       'duration':phase.duration,'status':status,'font':settings.get('overlay_font',34),
                       'phase':phase.key,
-                      'background_opacity':settings.get('overlay_background_opacity',0.5)}
+                      'background_opacity':settings.get('overlay_background_opacity',0.5),
+                      'outline':settings.get('overlay_outline',False)}
 
     def close(self):
         self.server.shutdown()
