@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import queue
 import struct
+import sys
 import threading
 import time
 import tkinter as tk
@@ -19,7 +20,14 @@ from overlay import CompactOverlay
 from gamebar_view import GameBarView
 from hotkeys import parse_edit_hotkey
 
-ROOT = Path(__file__).resolve().parent
+RESOURCES = Path(__file__).resolve().parent
+
+
+def application_directory():
+    return Path(sys.executable).resolve().parent if getattr(sys,'frozen',False) else RESOURCES
+
+
+ROOT = application_directory()
 CONFIG = ROOT/'settings.json'
 SETTINGS_DEFAULTS = {
     'source':'','edit_hotkey':'F10','overlay_font':34,
@@ -48,7 +56,14 @@ def find_source():
     return str(max(choices,key=lambda path:path.stat().st_mtime)) if choices else ''
 
 
-def load_settings():
+def write_settings(settings):
+    preferences = {key:settings.get(key,default) for key,default in SETTINGS_DEFAULTS.items()}
+    path = CONFIG.with_suffix('.tmp')
+    path.write_text(json.dumps(preferences,ensure_ascii=False,indent=2),encoding='utf-8')
+    path.replace(CONFIG)
+
+
+def load_settings(create=False):
     values = SETTINGS_DEFAULTS.copy()
     try:
         saved = json.loads(CONFIG.read_text(encoding='utf-8'))
@@ -75,13 +90,14 @@ def load_settings():
     values['overlay_background_opacity'] = max(0.0,min(1.0,opacity))
     try:values['edit_hotkey']=parse_edit_hotkey(values['edit_hotkey'])[0]
     except ValueError:values['edit_hotkey']='F10'
+    if create and not CONFIG.exists():write_settings(values)
     return values
 
 
 class Panel:
     def __init__(self, root, background=True):
         self.root,self.ephemeral = root,not background
-        self.settings = load_settings()
+        self.settings = load_settings(create=background)
         self.source = self.settings['source'] or find_source()
         self.events = queue.Queue()
         self.stop_event = threading.Event()
@@ -91,7 +107,7 @@ class Panel:
         self.last_phase,self.last_tracking,self.last_state_write = None,None,0
         self.root.title('Nightreign auto-timer')
         # Give Windows the full-resolution image; ICO selection can expose a small icon to the shell.
-        self.icon_image = tk.PhotoImage(file=str(ROOT/'assets'/'nightreign-auto-timer.png'))
+        self.icon_image = tk.PhotoImage(file=str(RESOURCES/'assets'/'nightreign-auto-timer.png'))
         self.root.iconphoto(True,self.icon_image)
         self.shell_icon = None
         self.root.bind('<Map>',lambda event: self.root.after_idle(self.apply_shell_icon)
@@ -138,7 +154,7 @@ class Panel:
         api.SendMessageW.argtypes = [wintypes.HWND,wintypes.UINT,wintypes.WPARAM,wintypes.LPARAM]
         api.SendMessageW.restype = wintypes.LPARAM
         if not self.shell_icon:
-            self.shell_icon = api.LoadImageW(None,str(ROOT/'assets'/'nightreign-auto-timer.ico'),
+            self.shell_icon = api.LoadImageW(None,str(RESOURCES/'assets'/'nightreign-auto-timer.ico'),
                                             1,256,256,0x0010)
         hwnd = api.GetAncestor(self.root.winfo_id(),2)
         if hwnd and self.shell_icon:
@@ -148,10 +164,7 @@ class Panel:
     def save_settings(self):
         if self.ephemeral:return
         try:
-            path = CONFIG.with_suffix('.tmp')
-            preferences = {key:self.settings.get(key,default) for key,default in SETTINGS_DEFAULTS.items()}
-            path.write_text(json.dumps(preferences,ensure_ascii=False,indent=2),encoding='utf-8')
-            path.replace(CONFIG)
+            write_settings(self.settings)
         except OSError as exc:log_event('settings_error',error=str(exc))
 
     def watch_save(self):

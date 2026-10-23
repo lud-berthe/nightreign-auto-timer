@@ -91,5 +91,23 @@ class PreferenceTests(unittest.TestCase):
                 self.config.write_text(json.dumps(value),encoding='utf-8')
                 self.assertEqual(load_settings(),SETTINGS_DEFAULTS)
 
+    def test_missing_settings_are_created_before_the_app_runs(self):
+        settings=load_settings(create=True)
+        self.assertTrue(self.config.is_file())
+        self.assertEqual(json.loads(self.config.read_text(encoding='utf-8')),settings)
+        self.assertEqual(settings['source'],'')
+
+    def test_existing_preferences_are_read_without_being_replaced(self):
+        original=json.dumps({'edit_hotkey':'F9','overlay_background_opacity':0.31})
+        self.config.write_text(original,encoding='utf-8')
+        settings=load_settings(create=True)
+        self.assertEqual(settings['edit_hotkey'],'F9')
+        self.assertEqual(settings['overlay_background_opacity'],0.31)
+        self.assertEqual(self.config.read_text(encoding='utf-8'),original)
+
+    def test_gui_self_test_does_not_create_preferences(self):
+        load_settings(create=False)
+        self.assertFalse(self.config.exists())
+
 
 if __name__=='__main__':unittest.main()

@@ -4,7 +4,13 @@
 
 Automatic day and storm timer for Elden Ring Nightreign on Windows. A desktop window and a transparent overlay follow the game using local save files and window metadata. The app does not require Overwolf or a mod loader and does not read game-process memory or inject code.
 
-## Setup
+## Windows executable
+
+Run **Nightreign auto-timer.exe**. Python, a mod loader and additional asset files are not needed. You can move the executable into your preferred writable folder.
+
+The app reads **settings.json next to the executable** and creates it immediately on first launch if it is missing. Keep that JSON beside the executable when moving the app to preserve your preferences. Launching from another working directory or a shortcut does not change the settings location. Logs and runtime diagnostics are also stored beside the executable.
+
+## Run from source
 
 Use Windows 10/11 and 64-bit Python 3.12 or newer with Tkinter. In the project folder:
 
@@ -19,7 +25,7 @@ Double-click **Launch Nightreign Timer.cmd** before leaving the Bastion, or run:
 .venv\Scripts\pythonw.exe app.py
 ~~~
 
-The launcher prefers the local virtual environment, then Python on PATH or the Windows Python launcher. Closing the desktop window exits the whole application.
+The source launcher prefers a built executable in dist, then the local virtual environment, then Python on PATH or the Windows Python launcher. Closing the desktop window exits the whole application.
 
 ## Overlay controls
 
@@ -35,7 +41,7 @@ The compact HUD uses native-resolution text and soft left/right background edges
 
 ## Settings and local data
 
-Preferences are stored in **settings.json** beside the app and are excluded from Git. The file is created automatically; **settings.example.json** documents the user-facing options. Close the app before editing settings manually.
+Preferences are stored in **settings.json** beside the executable (or app.py when running from source) and are excluded from Git. The file is created automatically at startup; **settings.example.json** documents the user-facing options. Close the app before editing settings manually.
 
 ~~~json
 {
@@ -90,6 +96,17 @@ Windowed and borderless modes are supported. Actual HDR appearance and exclusive
 | hotkeys.py | Configurable shortcut parsing |
 | gamebar_view.py / gamebar.html | Optional local browser view |
 | tests/ | Portable unit tests, synthetic fixtures and GUI smoke check |
+
+## Build the executable
+
+On Windows, using the development virtual environment:
+
+~~~powershell
+.venv\Scripts\python.exe -m pip install -r requirements-build.txt
+.venv\Scripts\python.exe build_exe.py
+~~~
+
+The output is **dist/Nightreign auto-timer.exe**, a single file with Python, Tk, cryptography, the icon and the browser view bundled inside. Personal settings and game saves are never included. Build outputs are ignored by Git; distribute the executable separately from the source repository.
 
 ## Development and validation
 

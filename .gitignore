@@ -31,3 +31,7 @@ Desktop.ini
 
 # Machine-local launch shortcuts
 *.lnk
+
+# Generated Windows builds
+/build/
+/dist/

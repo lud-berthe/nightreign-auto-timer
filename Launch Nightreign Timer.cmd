@@ -1,5 +1,9 @@
 @echo off
 setlocal
+if exist "%~dp0dist\Nightreign auto-timer.exe" (
+  start "" /d "%~dp0dist" "%~dp0dist\Nightreign auto-timer.exe"
+  exit /b 0
+)
 set "NIGHTREIGN_PYTHON=%~dp0.venv\Scripts\pythonw.exe"
 if exist "%NIGHTREIGN_PYTHON%" (
   start "" /b /d "%~dp0" "%NIGHTREIGN_PYTHON%" "%~dp0app.py"
