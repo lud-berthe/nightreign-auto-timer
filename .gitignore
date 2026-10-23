@@ -35,3 +35,6 @@ Desktop.ini
 # Generated Windows builds
 /build/
 /dist/
+
+# Released automatically when the app or watcher exits
+/.timer-*.lock

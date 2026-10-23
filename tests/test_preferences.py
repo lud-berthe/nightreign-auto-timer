@@ -109,5 +109,18 @@ class PreferenceTests(unittest.TestCase):
         load_settings(create=False)
         self.assertFalse(self.config.exists())
 
+    def test_automatic_launch_and_close_are_opt_in_and_persisted(self):
+        settings=load_settings()
+        self.assertFalse(settings['open_with_game']);self.assertFalse(settings['close_with_game'])
+        settings.update(open_with_game=True,close_with_game=True)
+        Panel.save_settings(SimpleNamespace(ephemeral=False,settings=settings))
+        restored=load_settings()
+        self.assertTrue(restored['open_with_game']);self.assertTrue(restored['close_with_game'])
+
+    def test_invalid_automation_flags_do_not_enable_background_startup(self):
+        self.config.write_text(json.dumps({'open_with_game':'true','close_with_game':1}))
+        settings=load_settings()
+        self.assertFalse(settings['open_with_game']);self.assertFalse(settings['close_with_game'])
+
 
 if __name__=='__main__':unittest.main()

@@ -25,7 +25,16 @@ Double-click **Launch Nightreign Timer.cmd** before leaving the Bastion, or run:
 .venv\Scripts\pythonw.exe app.py
 ~~~
 
-The source launcher prefers a built executable in dist, then the local virtual environment, then Python on PATH or the Windows Python launcher. Closing the desktop window exits the whole application.
+The source launcher prefers a built executable in dist, then the local virtual environment, then Python on PATH or the Windows Python launcher. Closing the desktop window exits the timer; the optional automatic-opening watcher is separate.
+
+## Automatic opening and closing
+
+The desktop window has two independent checkboxes, both off by default:
+
+- **Open automatically with Nightreign** starts a hidden watcher immediately and adds it to the current user's Windows startup. It opens one timer window when Nightreign appears. Closing the timer manually keeps it closed for the rest of that game session; the next launch of Nightreign can open it again. Unchecking the option removes Windows startup and stops the watcher.
+- **Close automatically with Nightreign** closes the timer when a previously detected game window has been gone for five seconds. Minimizing the game or switching to another app does not trigger it. This option works independently of automatic opening.
+
+Closing the timer window always closes the timer itself. If automatic opening is enabled, the separate watcher remains in the background. Keep the executable in place while this option is enabled; if you move it, open the app once from its new location to update Windows startup. No administrator rights are required.
 
 ## Overlay controls
 
@@ -53,7 +62,9 @@ Preferences are stored in **settings.json** beside the executable (or app.py whe
   "overlay_anchor_x": 0.5,
   "overlay_anchor_y": 0.0,
   "overlay_x": null,
-  "overlay_y": null
+  "overlay_y": null,
+  "open_with_game": false,
+  "close_with_game": false
 }
 ~~~
 
@@ -94,6 +105,7 @@ Windowed and borderless modes are supported. Actual HDR appearance and exclusive
 | layered_background.py | Transparent background with soft side edges |
 | game_window.py | Window bounds and DPI metadata |
 | hotkeys.py | Configurable shortcut parsing |
+| lifecycle.py | Automatic opening/closing, Windows startup and instance coordination |
 | gamebar_view.py / gamebar.html | Optional local browser view |
 | tests/ | Portable unit tests, synthetic fixtures and GUI smoke check |
 
@@ -106,7 +118,7 @@ On Windows, using the development virtual environment:
 .venv\Scripts\python.exe build_exe.py
 ~~~
 
-The output is **dist/Nightreign auto-timer.exe**, a single file with Python, Tk, cryptography, the icon and the browser view bundled inside. Personal settings and game saves are never included. Build outputs are ignored by Git; distribute the executable separately from the source repository.
+The output is **dist/Nightreign auto-timer.exe**, a single file with Python, Tk, cryptography, the icon and the browser view bundled inside. Personal settings and game saves are never included. The build also creates **dist/Nightreign-auto-timer.zip** with the executable and clean default settings for Nexus. Both automatic options are off in that package. Build outputs are ignored by Git.
 
 ## Development and validation
 

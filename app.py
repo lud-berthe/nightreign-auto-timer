@@ -19,6 +19,8 @@ from timings import phase_at, countdown_color, compact_text
 from overlay import CompactOverlay
 from gamebar_view import GameBarView
 from hotkeys import parse_edit_hotkey
+from lifecycle import GameLifecycle,InstanceLock,instance_running,configure_startup,launch_process
+from game_window import GameWindowTracker
 
 RESOURCES = Path(__file__).resolve().parent
 
@@ -31,6 +33,7 @@ ROOT = application_directory()
 CONFIG = ROOT/'settings.json'
 SETTINGS_DEFAULTS = {
     'source':'','edit_hotkey':'F10','overlay_font':34,
+    'open_with_game':False,'close_with_game':False,
     'overlay_background_opacity':0.5,'overlay_hidden':False,
     'overlay_anchor_x':0.5,'overlay_anchor_y':0.0,'overlay_x':None,'overlay_y':None,
 }
@@ -78,7 +81,8 @@ def load_settings(create=False):
     if not isinstance(values['source'],str):values['source'] = ''
     font = values['overlay_font']
     if type(font) is not int or not 20<=font<=72:values['overlay_font'] = 34
-    if not isinstance(values['overlay_hidden'],bool):values['overlay_hidden'] = False
+    for key in ('overlay_hidden','open_with_game','close_with_game'):
+        if not isinstance(values[key],bool):values[key] = False
     for key,fallback in [('overlay_anchor_x',0.5),('overlay_anchor_y',0.0)]:
         value = values[key]
         if type(value) not in (int,float) or not isfinite(value) or not 0<=value<=1:
@@ -94,8 +98,28 @@ def load_settings(create=False):
     return values
 
 
+def application_command():
+    if getattr(sys,'frozen',False):return [sys.executable]
+    pythonw = Path(sys.executable).with_name('pythonw.exe')
+    return [str(pythonw if pythonw.exists() else Path(sys.executable)),str(RESOURCES/'app.py')]
+
+
+def ensure_watcher():
+    if not instance_running(ROOT,'watcher'):
+        launch_process([*application_command(),'--watch'],ROOT)
+
+
+def watch_game():
+    tracker,session = GameWindowTracker(),GameLifecycle()
+    while load_settings()['open_with_game']:
+        transition = session.observe(tracker.current() is not None,time.monotonic())
+        if transition=='opened' and not instance_running(ROOT,'window'):
+            launch_process([*application_command(),'--from-game'],ROOT)
+        time.sleep(1)
+
+
 class Panel:
-    def __init__(self, root, background=True):
+    def __init__(self, root, background=True, from_game=False):
         self.root,self.ephemeral = root,not background
         self.settings = load_settings(create=background)
         self.source = self.settings['source'] or find_source()
@@ -103,6 +127,7 @@ class Panel:
         self.stop_event = threading.Event()
         self.threads = []
         self.engine = TimerEngine()
+        self.game_session = GameLifecycle(initially_running=from_game)
         self.latest,self.read_error,self.gamebar = None,None,None
         self.last_phase,self.last_tracking,self.last_state_write = None,None,0
         self.root.title('Nightreign auto-timer')
@@ -123,6 +148,16 @@ class Panel:
         self.timer_label.pack(expand=True)
         self.hint_label = tk.Label(body,text=f"{self.settings['edit_hotkey']} · edit overlay",bg=BG,fg=MUTED,font=('Segoe UI',8))
         self.hint_label.pack(pady=(8,0))
+        self.open_with_game = tk.BooleanVar(root,value=self.settings['open_with_game'])
+        self.close_with_game = tk.BooleanVar(root,value=self.settings['close_with_game'])
+        self.automation_checks = []
+        for label,variable in [('Open automatically with Nightreign',self.open_with_game),
+                               ('Close automatically with Nightreign',self.close_with_game)]:
+            check = tk.Checkbutton(body,text=label,variable=variable,command=self.update_automation,
+                                   bg=BG,fg=TEXT,selectcolor=BG,activebackground=BG,activeforeground=TEXT,
+                                   font=('Segoe UI',8),anchor='w',highlightthickness=0)
+            check.pack(fill='x',pady=(3,0))
+            self.automation_checks.append(check)
         self.overlay = CompactOverlay(self)
         self.root.update_idletasks()
         scale = max(1,root.winfo_fpixels('1i')/96)
@@ -139,8 +174,37 @@ class Panel:
                 thread = threading.Thread(target=target,daemon=True)
                 self.threads.append(thread)
                 thread.start()
+        if background and self.settings['open_with_game']:
+            try:
+                configure_startup(True,application_command())
+                ensure_watcher()
+            except (OSError,ValueError) as exc:
+                self.hint_label.configure(text='Automatic opening could not be enabled',fg='#ebbc78')
+                log_event('automatic_open_error',error=str(exc))
         log_event('app_opened',source=self.source)
         self.tick()
+
+    def update_automation(self):
+        previous = {key:self.settings[key] for key in ('open_with_game','close_with_game')}
+        desired = {'open_with_game':self.open_with_game.get(),'close_with_game':self.close_with_game.get()}
+        self.settings.update(desired)
+        if self.ephemeral:return
+        try:
+            write_settings(self.settings)
+            if desired['open_with_game']!=previous['open_with_game']:
+                configure_startup(desired['open_with_game'],application_command())
+            if desired['open_with_game']:ensure_watcher()
+        except (OSError,ValueError) as exc:
+            self.settings.update(previous)
+            self.open_with_game.set(previous['open_with_game'])
+            self.close_with_game.set(previous['close_with_game'])
+            try:
+                write_settings(self.settings)
+                if desired['open_with_game']!=previous['open_with_game']:
+                    configure_startup(previous['open_with_game'],application_command())
+            except (OSError,ValueError):pass
+            self.hint_label.configure(text='Could not save automatic launch settings',fg='#ebbc78')
+            log_event('automation_error',error=str(exc))
 
     def apply_shell_icon(self):
         # Set both window icons explicitly: the shell can otherwise enlarge Tk's small class icon.
@@ -241,6 +305,10 @@ class Panel:
                 self.hint_label.configure(text=f"{self.settings['edit_hotkey']} is already used by another app",fg='#ebbc78')
         now,wall = time.monotonic(),time.time()
         if not self.ephemeral:
+            transition = self.game_session.observe(self.overlay.game is not None,now)
+            if transition=='closed' and self.settings['close_with_game']:
+                self.close()
+                return
             result = self.engine.observe_window(self.overlay.game is not None,now)
             if result:log_event(result)
         elapsed = self.engine.elapsed(now)
@@ -294,10 +362,12 @@ def main():
     global LOG_ENABLED
     parser = argparse.ArgumentParser()
     parser.add_argument('--self-test',action='store_true')
+    parser.add_argument('--watch',action='store_true',help=argparse.SUPPRESS)
+    parser.add_argument('--from-game',action='store_true',help=argparse.SUPPRESS)
     parser.add_argument('--resume-day',type=int,choices=(1,2,3),help=argparse.SUPPRESS)
     parser.add_argument('--resume-start',type=float,help=argparse.SUPPRESS)
     args = parser.parse_args()
-    LOG_ENABLED = not args.self_test
+    LOG_ENABLED = not (args.self_test or args.watch)
     if (args.resume_day is None)!=(args.resume_start is None):parser.error('Resuming requires a day and a start time.')
     if args.resume_start is not None and not 0<=time.time()-args.resume_start<86400:parser.error('Invalid resume start time.')
     if os.name=='nt':
@@ -312,8 +382,22 @@ def main():
             api.SetProcessDpiAwarenessContext.argtypes = [ctypes.c_void_p]
             api.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
         except (AttributeError,OSError):pass
+    lock = None
+    if not args.self_test:
+        lock = InstanceLock(ROOT,'watcher' if args.watch else 'window')
+        if not lock.acquire():return
+    try:
+        if args.watch:
+            watch_game()
+            return
+        run_window(args)
+    finally:
+        if lock:lock.release()
+
+
+def run_window(args):
     root = tk.Tk();root.withdraw()
-    panel = Panel(root,background=not args.self_test)
+    panel = Panel(root,background=not args.self_test,from_game=args.from_game)
     if args.resume_day is not None:
         panel.engine.start(args.resume_day,time.monotonic(),time.time()-args.resume_start,
                            'Automatic start · estimated from save file')

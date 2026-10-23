@@ -8,6 +8,11 @@ import tkinter as tk
 def run(panel, root):
     from dataclasses import replace
     from game_window import anchored_position
+    assert [check.cget('text') for check in panel.automation_checks]==[
+        'Open automatically with Nightreign','Close automatically with Nightreign']
+    for key,check in zip(('open_with_game','close_with_game'),panel.automation_checks):
+        before=panel.settings[key];check.invoke();assert panel.settings[key] is not before
+        check.invoke();assert panel.settings[key] is before
     wall = time.time()
     panel.events.put(('observation',dict(clock_seconds=23400,saved_at=wall-2,observed_at=wall-1,play_time_ms=1000)))
     panel.events.put(('observation',dict(clock_seconds=23401,saved_at=wall-0.2,observed_at=wall,play_time_ms=2000)))
@@ -153,7 +158,26 @@ def run(panel, root):
     panel.tick();panel.overlay.follow_tick();root.update()
     assert panel.engine.day==1 and panel.engine.suspended_run is None
     assert panel.overlay.window.winfo_ismapped()
+    # Exercise the real close-on-game-exit branch without writing preferences or starting a watcher.
+    from unittest.mock import patch
+    panel.settings['close_with_game']=True
+    with patch.object(panel.game_session,'observe',return_value='closed'),patch.object(panel,'close') as close:
+        panel.ephemeral=False
+        try:panel.tick();close.assert_called_once()
+        finally:panel.ephemeral=True
     root.tk.call(root.protocol('WM_DELETE_WINDOW'))
     assert panel.stop_event.is_set()
+    import sys
+    if getattr(sys,'frozen',False):
+        import shutil,tempfile
+        from pathlib import Path
+        from lifecycle import launch_process
+        with tempfile.TemporaryDirectory(prefix='nr-child-') as folder:
+            executable = Path(folder)/'Nightreign auto-timer.exe'
+            shutil.copy2(sys.executable,executable)
+            child = launch_process([str(executable),'--watch'],folder)
+            try:assert child.wait(timeout=20)==0
+            finally:
+                if child.poll() is None:child.kill();child.wait()
     print('GUI, tracking, editor, Day 3/lobby hiding, save suspension/resume and close checks passed')
     return
