@@ -90,7 +90,7 @@ class Panel:
         self.engine.auto_start,self.engine.auto_day2 = bool(self.settings['auto_start']),bool(self.settings['auto_day2'])
         self.latest,self.read_error,self.gamebar = None,None,None
         self.last_phase,self.last_tracking,self.last_state_write = None,None,0
-        self.root.title('Nightreign Timer')
+        self.root.title('Nightreign auto-timer')
         self.root.configure(bg=BG)
         self.root.protocol('WM_DELETE_WINDOW',self.close)
         body = tk.Frame(root,bg=BG,padx=24,pady=14)
@@ -212,7 +212,7 @@ class Panel:
         title,clock = compact_text(phase,self.read_error is not None)
         self.phase_label.configure(text=title)
         self.timer_label.configure(text=clock,fg=countdown_color(phase))
-        self.root.title('Nightreign Timer'+(f' · Day {self.engine.day}' if self.engine.day else ''))
+        self.root.title('Nightreign auto-timer'+(f' · Day {self.engine.day}' if self.engine.day else ''))
         self.overlay.render(self.engine.day,phase,'',self.read_error is not None)
         status = self.engine.origin
         if self.gamebar:self.gamebar.publish(self.engine.day,phase,status,self.settings,self.read_error is not None)

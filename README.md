@@ -1,4 +1,4 @@
-# Nightreign Timer
+# Nightreign auto-timer
 
 Automatic day and storm timer for Elden Ring Nightreign on Windows. A desktop window and a transparent overlay follow the game using local save files and window metadata. The app does not require Overwolf or a mod loader and does not read game-process memory or inject code.
 
