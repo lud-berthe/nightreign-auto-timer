@@ -16,32 +16,43 @@ KEY = bytes.fromhex('18f6326605bd178a5524523ac0a0c609')
 def decode_slot(path):
     path = Path(path)
     before = path.stat()
+    slot,spans = None,[]
     with path.open('rb') as stream:
-        raw = stream.read()
+        header = stream.read(512)
+        if len(header)!=512 or header[:4]!=b'BND4' or struct.unpack_from('<I',header,12)[0]!=14:
+            raise ValueError('Unrecognized save format')
+        for index in range(14):
+            descriptor = 64+32*index
+            if header[descriptor:descriptor+8]!=bytes.fromhex('40000000ffffffff'):
+                raise ValueError('Unrecognized save structure')
+            size,_,offset = struct.unpack_from('<iii',header,descriptor+8)
+            if offset<512 or size<48 or (size-16)%16 or offset+size>before.st_size:
+                raise ValueError('Incomplete save file')
+            if any(offset<end and offset+size>start for start,end in spans):
+                raise ValueError('Inconsistent save structure')
+            spans.append((offset,offset+size))
+            stream.seek(offset)
+            payload = stream.read(size)
+            if len(payload)!=size:raise ValueError('Incomplete save file')
+            decoder = Cipher(algorithms.AES(KEY),modes.CBC(payload[:16])).decryptor()
+            plain = decoder.update(memoryview(payload)[16:])+decoder.finalize()
+            if plain[-12:]!=bytes([12])*12 or hashlib.md5(memoryview(plain)[4:-28]).digest()!=plain[-28:-12]:
+                raise ValueError('Save write in progress or checksum mismatch')
+            if index==0:slot = plain
     after = path.stat()
-    if (before.st_size,before.st_mtime_ns) != (after.st_size,after.st_mtime_ns) or len(raw) != before.st_size:
+    if (before.st_size,before.st_mtime_ns)!=(after.st_size,after.st_mtime_ns):
         raise ValueError('Save write in progress')
-    if len(raw) < 512 or raw[:4] != b'BND4' or struct.unpack_from('<I',raw,12)[0] != 14:
-        raise ValueError('Unrecognized save format')
-    slot = None
-    spans = []
-    for index in range(14):
-        descriptor = 64+32*index
-        if raw[descriptor:descriptor+8] != bytes.fromhex('40000000ffffffff'):
-            raise ValueError('Unrecognized save structure')
-        size, _, offset = struct.unpack_from('<iii',raw,descriptor+8)
-        if offset < 512 or size < 48 or (size-16)%16 or offset+size > len(raw):
-            raise ValueError('Incomplete save file')
-        if any(offset < end and offset+size > start for start,end in spans):
-            raise ValueError('Inconsistent save structure')
-        spans.append((offset,offset+size))
-        decoder = Cipher(algorithms.AES(KEY),modes.CBC(raw[offset:offset+16])).decryptor()
-        plain = decoder.update(raw[offset+16:offset+size])+decoder.finalize()
-        if plain[-12:] != bytes([12])*12 or hashlib.md5(plain[4:-28]).digest() != plain[-28:-12]:
-            raise ValueError('Save write in progress or checksum mismatch')
-        if index == 0:
-            slot = plain
-    return slot, before.st_mtime_ns/1e9
+    return slot,before.st_mtime_ns/1e9
+
+
+def owned_clock_offsets(data, first, limit):
+    """Find PC owner tails in native code; validate all candidates afterwards."""
+    suffix = b'\x01\x00\x10\x01'
+    position = data.find(suffix,first+20,limit+23)
+    while position!=-1:
+        offset = position-20
+        if (offset-first)%4==0:yield offset
+        position = data.find(suffix,position+1,limit+23)
 
 
 def read_clock(data):
@@ -59,25 +70,26 @@ def read_clock(data):
     if tag != 0xC2 or start >= len(data)-28:
         raise ValueError('Unrecognized character structure')
     version = struct.unpack_from('<I',data,4)[0]
+    first,limit = start+28,len(data)-28-23
     found = []
-    for offset in range(start+28,len(data)-28-23,4):
-        a,b,current,pad = struct.unpack_from('<4I',data,offset)
-        if pad or current > 1 or not (0<a<=version and 0<b<=version):
-            continue
-        h,m,s = struct.unpack_from('<3I',data,offset-12)
-        if h>23 or m>59 or s>59 or struct.unpack_from('<I',data,offset-16)[0]:
-            continue
-        owner = struct.unpack_from('<Q',data,offset+16)[0]
-        if owner and not 0x0110000100000000 <= owner <= 0x01100001FFFFFFFF:
-            continue
-        found.append((owner,{'hour':h,'minute':m,'second':s,'clock_seconds':h*3600+m*60+s,
-                             'play_time_ms':struct.unpack_from('<I',data,12)[0],
-                             '_clock_offset':offset-12}))
-    # PC saves carry their Steam owner here. Newly visited areas can contain
-    # zero-owner structures that coincidentally look like a 01:01:01 clock.
-    # Keep zero-owner candidates only when no PC tail is present (PS layout).
-    owned = [item for item in found if item[0]]
-    if owned:found = owned
+    # Owned PC clocks take precedence. If none validates, preserve the complete
+    # zero-owner/PS-layout scan and its ambiguity checks.
+    for offsets in (owned_clock_offsets(data,first,limit),range(first,limit,4)):
+        found = []
+        for offset in offsets:
+            a,b,current,pad = struct.unpack_from('<4I',data,offset)
+            if pad or current>1 or not (0<a<=version and 0<b<=version):continue
+            h,m,s = struct.unpack_from('<3I',data,offset-12)
+            if h>23 or m>59 or s>59 or struct.unpack_from('<I',data,offset-16)[0]:continue
+            owner = struct.unpack_from('<Q',data,offset+16)[0]
+            if owner and not 0x0110000100000000<=owner<=0x01100001FFFFFFFF:continue
+            found.append((owner,{'hour':h,'minute':m,'second':s,'clock_seconds':h*3600+m*60+s,
+                                 'play_time_ms':struct.unpack_from('<I',data,12)[0],
+                                 '_clock_offset':offset-12}))
+        owned = [item for item in found if item[0]]
+        if owned:
+            found = owned
+            break
     if len(found) != 1:
         raise ValueError('Save clock not found or ambiguous')
     clock = found[0][1]

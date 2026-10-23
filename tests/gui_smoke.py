@@ -13,6 +13,7 @@ def run(panel, root):
     for key,check in zip(('open_with_game','close_with_game'),panel.automation_checks):
         before=panel.settings[key];check.invoke();assert panel.settings[key] is not before
         check.invoke();assert panel.settings[key] is before
+    panel.overlay.show()
     wall = time.time()
     panel.events.put(('observation',dict(clock_seconds=23400,saved_at=wall-2,observed_at=wall-1,play_time_ms=1000)))
     panel.events.put(('observation',dict(clock_seconds=23401,saved_at=wall-0.2,observed_at=wall,play_time_ms=2000)))
@@ -39,9 +40,36 @@ def run(panel, root):
     assert (actual_rect.left,actual_rect.top)==panel.overlay.last_position
     assert panel.overlay.last_position!=first
     captured = tracker.read_window(dummy_hwnd)
+    # Cached rendering must still rebuild fonts, geometry and the backdrop on DPI changes.
+    original_font_size = panel.overlay.clock_font.cget('size')
+    original_hud_size = panel.overlay.hud_size
+    panel.overlay.tracker.current = lambda:replace(captured,dpi=captured.dpi+48,foreground=True)
+    panel.overlay.follow_tick();root.update()
+    assert panel.overlay.clock_font.cget('size')!=original_font_size
+    assert panel.overlay.hud_size!=original_hud_size
+    assert panel.overlay.canvas.itemcget(panel.overlay.clock_item,'fill')=='#ff766b'
+    assert panel.overlay.canvas.itemcget(panel.overlay.clock_item,'text')=='0:59'
+    api.GetWindowRect(panel.overlay.hwnd(),ctypes.byref(actual_rect))
+    assert (actual_rect.right-actual_rect.left,actual_rect.bottom-actual_rect.top)==panel.overlay.size
+    panel.overlay.tracker.current = lambda:replace(captured,foreground=True)
+    panel.overlay.follow_tick();root.update()
+    assert panel.overlay.clock_font.cget('size')==original_font_size
+    assert panel.overlay.hud_size==original_hud_size
     panel.overlay.tracker.current = lambda:replace(captured,minimized=True)
     panel.overlay.follow_tick();root.update()
     assert not panel.overlay.window.winfo_ismapped()
+    # A hidden HUD keeps the current countdown and draws it immediately on return.
+    panel.engine.started_at = time.monotonic()-214
+    panel.tick()
+    assert panel.overlay.clock_text=='0:58'
+    panel.overlay.tracker.current = lambda:replace(captured,foreground=True)
+    panel.overlay.follow_tick();root.update()
+    assert panel.overlay.window.winfo_ismapped()
+    assert panel.overlay.canvas.itemcget(panel.overlay.clock_item,'text')=='0:58'
+    panel.engine.started_at = time.monotonic()-213
+    panel.tick()
+    panel.overlay.tracker.current = lambda:replace(captured,minimized=True)
+    panel.overlay.follow_tick();root.update()
     top_levels = {str(widget) for widget in root.winfo_children() if isinstance(widget,tk.Toplevel)}
     panel.events.put(('edit',None));panel.tick();root.update()
     assert panel.overlay.editing and panel.overlay.editor.winfo_exists()

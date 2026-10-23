@@ -46,7 +46,7 @@ Press **F10** to edit the overlay in place. The preview displays **Edit / 0:00**
 - The opacity slider starts at **50%** and affects only the background.
 - **Done** or F10 closes editing. Outside editing, clicks pass through the overlay.
 
-The compact HUD uses native-resolution text and soft left/right background edges. Editing controls have outlined text for readability over bright scenes. Position, opacity, visibility and the shortcut are saved when changed and restored on the next launch.
+The compact HUD uses native-resolution text and soft left/right background edges. Text and geometry update only when their visible state changes; the game window is still checked every 50 ms for responsive tracking. Editing controls have outlined text for readability over bright scenes. Position, opacity, visibility and the shortcut are saved when changed and restored on the next launch.
 
 ## Settings and local data
 
@@ -69,6 +69,8 @@ Preferences are stored in **settings.json** beside the executable (or app.py whe
 ~~~
 
 An empty source enables automatic discovery of NR0000.sl2 and NR_TimerTests.sl2 under %APPDATA%\Nightreign; the detected path is kept in memory. A custom source can be set locally; a freshly updated game save can still be detected automatically. The first character slot is read, and save files are opened for reading only.
+
+Save entries are read and validated one at a time to limit temporary allocations. All 14 encrypted entries retain padding and checksum validation, and clock detection still rejects ambiguous layouts.
 
 Only user preferences are saved. Position values are managed by the overlay editor: anchors are relative to the game window, while x/y preserve the fallback desktop position. Calibrated phase times and automatic detection are defined in code; old internal options are ignored and removed when preferences are saved. Text outlining always adapts to screen DPI.
 

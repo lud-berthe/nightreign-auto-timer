@@ -130,11 +130,22 @@ class CompactOverlay:
         self.control_press = None
         self.tracker = GameWindowTracker()
         self.game = None
+        self.api = self.tracker.user
+        self.handles = {}
+        self.text_signature = self.render_signature = None
+        self.visibility_signature = self.backdrop_signature = None
+        if self.api:
+            self.api.GetParent.argtypes = [wintypes.HWND]
+            self.api.GetParent.restype = wintypes.HWND
+            self.api.GetWindowRect.argtypes = [wintypes.HWND,ctypes.POINTER(wintypes.RECT)]
+            self.api.SetWindowPos.argtypes = [wintypes.HWND,wintypes.HWND,ctypes.c_int,ctypes.c_int,
+                                             ctypes.c_int,ctypes.c_int,wintypes.UINT]
         self.follow_status = 'not_found'
         self.last_position = None
         self.dpi = 96
         self.size = (240,100)
         self.phase_text,self.clock_text = 'Waiting for\nexpedition...',''
+        self.clock_color = '#ffffff'
         self.apply_style()
         self.canvas.bind('<ButtonPress-1>',self.begin_drag)
         self.canvas.bind('<B1-Motion>',self.drag)
@@ -150,10 +161,9 @@ class CompactOverlay:
         if not panel.ephemeral:self.window.after(50,self.follow_tick)
 
     def hwnd(self, window=None):
-        api = ctypes.WinDLL('user32')
-        api.GetParent.argtypes = [wintypes.HWND]
-        api.GetParent.restype = wintypes.HWND
-        return api.GetParent((window or self.window).winfo_id())
+        target = window or self.window
+        if target not in self.handles:self.handles[target] = self.api.GetParent(target.winfo_id())
+        return self.handles[target]
 
     def set_interactive(self, editing):
         if os.name!='nt':return
@@ -176,16 +186,15 @@ class CompactOverlay:
         result = put(handle,-20,style)
         if not result and ctypes.get_last_error():raise ctypes.WinError(ctypes.get_last_error())
 
-    def move(self, x, y):
+    def move(self, x, y, force=False):
         x,y = int(x),int(y)
+        if not force and self.last_position==(x,y):return
+        self.visibility_signature = self.backdrop_signature = None
         self.last_position = (x,y)
         self.window.update_idletasks()
         if os.name=='nt':
-            api = ctypes.WinDLL('user32')
-            api.GetWindowRect.argtypes = [wintypes.HWND,ctypes.POINTER(wintypes.RECT)]
+            api = self.api
             rect = wintypes.RECT()
-            api.SetWindowPos.argtypes = [wintypes.HWND,wintypes.HWND,ctypes.c_int,ctypes.c_int,
-                                        ctypes.c_int,ctypes.c_int,wintypes.UINT]
             for window in (self.window,self.backdrop):
                 handle = self.hwnd(window)
                 if api.GetWindowRect(handle,ctypes.byref(rect)) and (rect.left,rect.top)==(x,y):continue
@@ -194,6 +203,8 @@ class CompactOverlay:
             for window in (self.window,self.backdrop):window.geometry(f'+{x}+{y}')
 
     def apply_style(self):
+        self.text_signature = self.render_signature = None
+        self.visibility_signature = self.backdrop_signature = None
         self.window.configure(bg=KEY)
         self.canvas.configure(bg=KEY)
         self.window.attributes('-alpha',1.0)
@@ -228,7 +239,7 @@ class CompactOverlay:
         self.canvas.configure(width=width,height=height)
         for item in [self.phase_item]+self.phase_shadow:self.canvas.itemconfigure(item,font=self.phase_font)
         for item in [self.clock_item]+self.clock_shadow:self.canvas.itemconfigure(item,font=self.clock_font)
-        self.draw_text()
+        self.draw_text(self.clock_color)
 
     def draw_text(self, color='#ffffff'):
         width,height = self.size
@@ -237,6 +248,10 @@ class CompactOverlay:
         phase_text,clock_text = ('Edit','0:00') if self.editing else (self.phase_text,self.clock_text)
         if self.editing and self.hidden:phase_text,clock_text='',''
         if self.editing:color = '#ffffff'
+        signature = (self.size,self.padding,self.preview_offset,self.preview_height,self.controls_above,
+                     str(self.phase_font),str(self.clock_font),self.dpi,self.editing,self.hidden,phase_text,clock_text,color)
+        if signature==self.text_signature:return
+        self.text_signature = signature
         stroke = max(1,round(self.dpi/96))
         offsets = [(-stroke,0),(stroke,0),(0,-stroke),(0,stroke),
                    (-stroke,-stroke),(stroke,-stroke),(-stroke,stroke),(stroke,stroke)]
@@ -255,8 +270,12 @@ class CompactOverlay:
     def render(self, day, phase, status, read_error=False):
         self.phase_visible = overlay_active(day)
         self.phase_text,self.clock_text = compact_text(phase,read_error) if self.phase_visible else ('','')
-        self.draw_text(countdown_color(phase))
-        self.update_visibility()
+        color = self.clock_color = countdown_color(phase)
+        signature = (self.phase_visible,self.phase_text,self.clock_text,color)
+        if signature!=self.render_signature:
+            self.render_signature = signature
+            if self.window.winfo_ismapped() or not self.phase_visible or self.editing:self.draw_text(color)
+            self.update_visibility()
 
     def follow_tick(self):
         if self.panel.stop_event.is_set():return
@@ -270,43 +289,51 @@ class CompactOverlay:
             if game.dpi!=self.dpi:
                 self.dpi = game.dpi
                 self.apply_style()
-            if not self.drag_origin:
+            if not self.drag_origin and (self.phase_visible or self.editing):
                 x,y = anchored_position(game,self.hud_size,
                     self.panel.settings.get('overlay_anchor_x',0.5),
                     self.panel.settings.get('overlay_anchor_y',0))
-                self.move(x,y-self.preview_offset)
+                position = (x,y-self.preview_offset)
+                if position!=self.last_position:self.move(*position)
         self.update_visibility()
         self.window.after(50,self.follow_tick)
 
     def update_visibility(self):
+        signature = (self.follow_status,self.hidden,self.phase_visible,self.editing,self.last_position,
+                     self.size,self.preview_offset,self.preview_height,self.panel.settings.get('overlay_background_opacity',0))
+        if signature==self.visibility_signature:return
         allowed = self.follow_status=='following' or self.editing
         if not self.editing and (self.hidden or not self.phase_visible or not allowed):
             if self.window.winfo_ismapped():self.window.withdraw()
         elif not self.window.winfo_ismapped():
+            self.draw_text(self.clock_color)
             self.window.deiconify()
             self.window.update_idletasks()
-            if self.last_position:self.move(*self.last_position)
+            if self.last_position:self.move(*self.last_position,force=True)
             if os.name=='nt':
-                api = ctypes.WinDLL('user32')
-                api.SetWindowPos.argtypes = [wintypes.HWND,wintypes.HWND,ctypes.c_int,ctypes.c_int,
-                                            ctypes.c_int,ctypes.c_int,wintypes.UINT]
+                api = self.api
                 api.SetWindowPos(self.hwnd(),wintypes.HWND(-1),0,0,0,0,0x0001|0x0002|0x0010)
         self.sync_backdrop()
+        self.visibility_signature = signature
 
     def sync_backdrop(self):
-        if not self.window.winfo_ismapped() or (not self.editing and self.panel.settings.get('overlay_background_opacity',0)<=0):
-            self.backdrop.withdraw()
+        opacity = self.panel.settings.get('overlay_background_opacity',0)
+        if not self.window.winfo_ismapped() or (not self.editing and opacity<=0):
+            if self.backdrop.winfo_ismapped():self.backdrop.withdraw()
+            self.backdrop_signature = None
             return
-        if not self.backdrop.winfo_ismapped():self.backdrop.deiconify()
-        if self.last_position:self.move(*self.last_position)
+        if not self.backdrop.winfo_ismapped():
+            self.backdrop.deiconify()
+            if self.last_position:self.move(*self.last_position,force=True)
+            self.backdrop_signature = None
+        signature = (self.last_position,self.size,opacity,self.hidden,self.editing,self.preview_offset,self.preview_height)
+        if signature==self.backdrop_signature:return
         if os.name=='nt':
-            api = ctypes.WinDLL('user32')
-            api.SetWindowPos.argtypes = [wintypes.HWND,wintypes.HWND,ctypes.c_int,ctypes.c_int,
-                                        ctypes.c_int,ctypes.c_int,wintypes.UINT]
+            api = self.api
             api.SetWindowPos(self.hwnd(self.backdrop),self.hwnd(),0,0,0,0,0x0001|0x0002|0x0010)
             self.soft_background.paint(self.hwnd(self.backdrop),self.last_position,self.size,
-                0 if self.hidden else self.panel.settings.get('overlay_background_opacity',0),self.editing,
-                self.preview_offset,self.preview_height)
+                0 if self.hidden else opacity,self.editing,self.preview_offset,self.preview_height)
+        self.backdrop_signature = signature
 
     def set_background_opacity(self, value):
         opacity = max(0,min(100,float(value)))/100

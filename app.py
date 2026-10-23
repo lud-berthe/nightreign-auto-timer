@@ -133,6 +133,7 @@ class Panel:
         self.game_session = GameLifecycle(initially_running=from_game)
         self.latest,self.read_error,self.gamebar = None,None,None
         self.last_phase,self.last_tracking,self.last_state_write = None,None,0
+        self.display_signature = None
         self.root.title('Nightreign auto-timer')
         # Give Windows the full-resolution image; ICO selection can expose a small icon to the shell.
         self.icon_image = tk.PhotoImage(file=str(RESOURCES/'assets'/'nightreign-auto-timer.png'))
@@ -241,9 +242,13 @@ class Panel:
     def watch_save(self):
         from save_reader import read_observation
         successful,pending,stable_since,error_text = None,None,0,None
+        next_discovery = 0
         while not self.stop_event.is_set():
             try:
-                candidate = find_source()
+                candidate = None
+                if time.monotonic()>=next_discovery:
+                    candidate = find_source()
+                    next_discovery = time.monotonic()+2
                 if candidate and candidate!=self.source:
                     current_stamp = Path(self.source).stat().st_mtime if self.source and Path(self.source).exists() else 0
                     candidate_stamp = Path(candidate).stat().st_mtime
@@ -321,9 +326,13 @@ class Panel:
         elapsed = self.engine.elapsed(now)
         phase = phase_at(self.engine.day,elapsed)
         title,clock = compact_text(phase,self.read_error is not None)
-        self.phase_label.configure(text=title)
-        self.timer_label.configure(text=clock,fg=countdown_color(phase))
-        self.root.title('Nightreign auto-timer'+(f' · Day {self.engine.day}' if self.engine.day else ''))
+        color = countdown_color(phase)
+        signature = (title,clock,color,self.engine.day)
+        if signature!=self.display_signature:
+            self.display_signature = signature
+            self.phase_label.configure(text=title)
+            self.timer_label.configure(text=clock,fg=color)
+            self.root.title('Nightreign auto-timer'+(f' · Day {self.engine.day}' if self.engine.day else ''))
         self.overlay.render(self.engine.day,phase,'',self.read_error is not None)
         status = self.engine.origin
         if self.gamebar:self.gamebar.publish(self.engine.day,phase,status,self.settings,self.read_error is not None)

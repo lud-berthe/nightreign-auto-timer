@@ -4,8 +4,10 @@ from pathlib import Path
 import struct
 import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 from save_reader import decode_slot,read_observation,read_clock
-from tests.fixtures import make_slot,make_container,WORLD_START
+from tests.fixtures import make_slot,make_container,WORLD_START,CLOCK_OFFSET
 
 
 class SaveReaderTests(unittest.TestCase):
@@ -47,6 +49,56 @@ class SaveReaderTests(unittest.TestCase):
         struct.pack_into('<3I',data,offset-12,1,1,1)
         struct.pack_into('<4I',data,offset,0x134,0x134,1,0)
         self.assertEqual(read_clock(data)['clock_seconds'],23400)
+
+    def test_two_owned_clock_candidates_remain_ambiguous(self):
+        data=bytearray(make_slot())
+        offset=WORLD_START+200
+        offset+=(WORLD_START+28-offset)%4
+        struct.pack_into('<3I',data,offset-12,2,3,4)
+        struct.pack_into('<4I',data,offset,0x134,0x134,1,0)
+        struct.pack_into('<Q',data,offset+16,0x0110000100000001)
+        with self.assertRaisesRegex(ValueError,'ambiguous'):read_clock(data)
+
+    def test_zero_owner_layout_retains_the_full_scan(self):
+        data=bytearray(make_slot(clock=40000))
+        struct.pack_into('<Q',data,CLOCK_OFFSET+28,0)
+        self.assertEqual(read_clock(data)['clock_seconds'],40000)
+
+    def test_zero_owner_ambiguity_is_still_rejected(self):
+        data=bytearray(make_slot())
+        struct.pack_into('<Q',data,CLOCK_OFFSET+28,0)
+        offset=WORLD_START+200
+        offset+=(WORLD_START+28-offset)%4
+        struct.pack_into('<3I',data,offset-12,2,3,4)
+        struct.pack_into('<4I',data,offset,0x134,0x134,1,0)
+        with self.assertRaisesRegex(ValueError,'ambiguous'):read_clock(data)
+
+    def test_invalid_owned_lookalike_does_not_hide_a_valid_zero_owner_clock(self):
+        data=bytearray(make_slot(clock=40000))
+        struct.pack_into('<Q',data,CLOCK_OFFSET+28,0)
+        offset=WORLD_START+200
+        offset+=(WORLD_START+28-offset)%4
+        struct.pack_into('<3I',data,offset-12,2,3,4)
+        struct.pack_into('<4I',data,offset,0x134,0x134,2,0)
+        struct.pack_into('<Q',data,offset+16,0x0110000100000001)
+        self.assertEqual(read_clock(data)['clock_seconds'],40000)
+
+    def test_owner_search_preserves_candidate_alignment(self):
+        data=bytearray(make_slot(clock=40000))
+        offset=WORLD_START+200
+        offset+=(WORLD_START+28-offset)%4
+        offset+=1
+        struct.pack_into('<3I',data,offset-12,2,3,4)
+        struct.pack_into('<4I',data,offset,0x134,0x134,1,0)
+        struct.pack_into('<Q',data,offset+16,0x0110000100000001)
+        self.assertEqual(read_clock(data)['clock_seconds'],40000)
+
+    def test_changed_file_during_streamed_validation_is_rejected(self):
+        raw=make_container();self.path.write_bytes(raw)
+        states=[SimpleNamespace(st_size=len(raw),st_mtime_ns=100),
+                SimpleNamespace(st_size=len(raw),st_mtime_ns=101)]
+        with patch('save_reader.Path.stat',side_effect=states):
+            with self.assertRaisesRegex(ValueError,'write in progress'):decode_slot(self.path)
 
 
 if __name__=='__main__':unittest.main()
