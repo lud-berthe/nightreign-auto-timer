@@ -28,3 +28,6 @@ __pycache__/
 .vscode/
 Thumbs.db
 Desktop.ini
+
+# Machine-local launch shortcuts
+*.lnk

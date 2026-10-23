@@ -91,6 +91,7 @@ class Panel:
         self.latest,self.read_error,self.gamebar = None,None,None
         self.last_phase,self.last_tracking,self.last_state_write = None,None,0
         self.root.title('Nightreign auto-timer')
+        self.root.iconbitmap(default=str(ROOT/'assets'/'nightreign-auto-timer.ico'))
         self.root.configure(bg=BG)
         self.root.protocol('WM_DELETE_WINDOW',self.close)
         body = tk.Frame(root,bg=BG,padx=24,pady=14)
@@ -259,6 +260,12 @@ def main():
     if (args.resume_day is None)!=(args.resume_start is None):parser.error('Resuming requires a day and a start time.')
     if args.resume_start is not None and not 0<=time.time()-args.resume_start<86400:parser.error('Invalid resume start time.')
     if os.name=='nt':
+        try:
+            shell = ctypes.WinDLL('shell32')
+            shell.SetCurrentProcessExplicitAppUserModelID.argtypes = [wintypes.LPCWSTR]
+            shell.SetCurrentProcessExplicitAppUserModelID.restype = ctypes.c_long
+            shell.SetCurrentProcessExplicitAppUserModelID('Nightreign.AutoTimer')
+        except (AttributeError,OSError):pass
         api = ctypes.WinDLL('user32')
         try:
             api.SetProcessDpiAwarenessContext.argtypes = [ctypes.c_void_p]
