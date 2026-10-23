@@ -129,57 +129,56 @@ class TimerTests(unittest.TestCase):
 
 
 class PhaseTests(unittest.TestCase):
-    settings = {'first':271.75,'second':662.1,'shrink_first':180.35,'shrink_second':177.1,'day2_shift':0}
 
     def test_closures_switch_from_waiting_to_shrinking_then_to_boss(self):
         for elapsed,key,remaining in [(0,'first_wait',271.75),(271.75,'first_shrink',180.35),
                 (452.1,'second_wait',210),(662.1,'second_shrink',177.1),(839.2,'boss',None)]:
             with self.subTest(elapsed=elapsed):
-                phase = phase_at(1,elapsed,self.settings)
+                phase = phase_at(1,elapsed)
                 self.assertEqual(phase.key,key)
                 if remaining is None:self.assertIsNone(phase.remaining)
                 else:self.assertAlmostEqual(phase.remaining,remaining)
 
     def test_second_day_restarts_its_sequence_from_the_observed_start(self):
-        self.assertEqual(phase_at(2,0,self.settings).remaining,271.75)
-        self.assertEqual(phase_at(2,662.1,self.settings).key,'second_shrink')
-        self.assertEqual(phase_at(2,839.2,self.settings).key,'boss')
+        self.assertEqual(phase_at(2,0).remaining,271.75)
+        self.assertEqual(phase_at(2,662.1).key,'second_shrink')
+        self.assertEqual(phase_at(2,839.2).key,'boss')
 
     def test_boss_duration_is_unbounded_and_never_creates_a_new_day(self):
         timer = TimerEngine()
         timer.start(1,0)
-        self.assertEqual(phase_at(timer.day,timer.elapsed(5000),self.settings).key,'boss')
+        self.assertEqual(phase_at(timer.day,timer.elapsed(5000)).key,'boss')
         self.assertEqual(timer.day,1)
         timer.start(2,5000)
-        self.assertEqual(phase_at(timer.day,timer.elapsed(5000),self.settings).key,'first_wait')
+        self.assertEqual(phase_at(timer.day,timer.elapsed(5000)).key,'first_wait')
 
     def test_idle_and_final_do_not_show_a_storm_countdown(self):
-        self.assertIsNone(phase_at(0,0,self.settings).remaining)
-        self.assertEqual(phase_at(3,100,self.settings).key,'final')
+        self.assertIsNone(phase_at(0,0).remaining)
+        self.assertEqual(phase_at(3,100).key,'final')
 
     def test_last_minute_warning_resets_when_the_next_phase_begins(self):
-        self.assertEqual(countdown_color(phase_at(1,211.75,self.settings)),'#ffffff')
-        self.assertEqual(countdown_color(phase_at(1,212.75,self.settings)),'#ff766b')
-        self.assertEqual(countdown_color(phase_at(1,271.75,self.settings)),'#ffffff')
+        self.assertEqual(countdown_color(phase_at(1,211.75)),'#ffffff')
+        self.assertEqual(countdown_color(phase_at(1,212.75)),'#ff766b')
+        self.assertEqual(countdown_color(phase_at(1,271.75)),'#ffffff')
 
 
 class GameBarTests(unittest.TestCase):
     def test_local_view_shares_the_phase_and_does_not_serve_local_files(self):
         view = GameBarView(port=0)
         try:
-            settings={**PhaseTests.settings,'overlay_background_opacity':0.35}
-            view.publish(1,phase_at(1,212.75,settings),'Save file read',settings)
+            settings={'overlay_background_opacity':0.35}
+            view.publish(1,phase_at(1,212.75),'Save file read',settings)
             with urlopen(view.url+'state',timeout=2) as response:
                 state = json.load(response)
             self.assertEqual((state['day'],state['phase'],state['remaining']),(1,'first_wait',59))
             self.assertTrue(state['visible'])
             self.assertEqual(state['background_opacity'],0.35)
             self.assertNotIn('source',state)
-            view.publish(1,phase_at(1,212.75,settings),'',dict(settings,overlay_hidden=True))
+            view.publish(1,phase_at(1,212.75),'',dict(settings,overlay_hidden=True))
             with urlopen(view.url+'state',timeout=2) as response:hidden=json.load(response)
             self.assertFalse(hidden['visible'])
             for day in (3,0):
-                view.publish(day,phase_at(day,0,PhaseTests.settings),'',PhaseTests.settings)
+                view.publish(day,phase_at(day,0),'',{})
                 with urlopen(view.url+'state',timeout=2) as response:hidden = json.load(response)
                 self.assertFalse(hidden['visible'])
                 self.assertEqual((hidden['title'],hidden['clock']),('',''))

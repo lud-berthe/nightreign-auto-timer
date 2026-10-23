@@ -3,6 +3,13 @@ from dataclasses import dataclass
 from math import ceil
 
 
+# Calibrated expedition schedule; these values are not user preferences.
+FIRST_CLOSING_START = 271.75
+FIRST_CLOSING_DURATION = 180.35
+SECOND_CLOSING_START = 662.1
+SECOND_CLOSING_DURATION = 177.1
+
+
 @dataclass(frozen=True)
 class Phase:
     key: str
@@ -29,16 +36,15 @@ def compact_text(phase, read_error=False):
 def overlay_active(day):return day in (1,2)
 
 
-def phase_at(day, elapsed, settings):
+def phase_at(day, elapsed):
     if day == 0:
         return Phase('idle', 'Waiting for expedition...', None, None, -1)
     if day == 3:
         return Phase('final', 'Final boss', None, None, 4)
-    shift = settings.get('day2_shift', 0) if day == 2 else 0
-    first = settings['first'] + shift
-    second = settings['second'] + shift
-    first_shrink = settings.get('shrink_first', 180.35)
-    second_shrink = settings.get('shrink_second', 177.1)
+    first = FIRST_CLOSING_START
+    second = SECOND_CLOSING_START
+    first_shrink = FIRST_CLOSING_DURATION
+    second_shrink = SECOND_CLOSING_DURATION
     phases = (
         ('first_wait', 'First closing in', 0, first),
         ('first_shrink', 'First closing now', first, first+first_shrink),

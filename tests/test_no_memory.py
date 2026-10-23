@@ -82,12 +82,11 @@ class SaveOnlyTests(unittest.TestCase):
         self.assertIsNone(read_clock(cleared)['expedition_active'])
 
     def test_day3_display_and_overlay_visibility_remain_available(self):
-        settings=dict(first=271.75,second=662.1,shrink_first=180.35,shrink_second=177.1,day2_shift=0)
-        self.assertEqual(compact_text(phase_at(3,0,settings)),('Day 3',''))
+        self.assertEqual(compact_text(phase_at(3,0)),('Day 3',''))
         self.assertFalse(overlay_active(3))
         self.assertFalse(overlay_active(0))
         for day in (1,2):
-            self.assertEqual(phase_at(day,662.1,settings).key,'second_shrink')
+            self.assertEqual(phase_at(day,662.1).key,'second_shrink')
 
 
 if __name__=='__main__':unittest.main()

@@ -41,14 +41,19 @@ Preferences are stored in **settings.json** beside the app and are excluded from
 {
   "source": "",
   "edit_hotkey": "F10",
+  "overlay_font": 34,
   "overlay_background_opacity": 0.5,
   "overlay_hidden": false,
   "overlay_anchor_x": 0.5,
-  "overlay_anchor_y": 0.0
+  "overlay_anchor_y": 0.0,
+  "overlay_x": null,
+  "overlay_y": null
 }
 ~~~
 
-An empty source enables automatic discovery of NR0000.sl2 and NR_TimerTests.sl2 under %APPDATA%\Nightreign. A custom source can be set locally. The first character slot is read, and save files are opened for reading only.
+An empty source enables automatic discovery of NR0000.sl2 and NR_TimerTests.sl2 under %APPDATA%\Nightreign; the detected path is kept in memory. A custom source can be set locally; a freshly updated game save can still be detected automatically. The first character slot is read, and save files are opened for reading only.
+
+Only user preferences are saved. Position values are managed by the overlay editor: anchors are relative to the game window, while x/y preserve the fallback desktop position. Calibrated phase times and automatic detection are defined in code; old internal options are ignored and removed when preferences are saved. Text outlining always adapts to screen DPI.
 
 Shortcut examples include F9, Ctrl+E and Ctrl+Alt+F10. F1–F24, A–Z, 0–9 and common navigation keys are supported, with optional Ctrl, Alt and Shift. Invalid values fall back to F10; the desktop hint reports conflicts with another app.
 

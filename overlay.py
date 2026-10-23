@@ -237,7 +237,7 @@ class CompactOverlay:
         phase_text,clock_text = ('Edit','0:00') if self.editing else (self.phase_text,self.clock_text)
         if self.editing and self.hidden:phase_text,clock_text='',''
         if self.editing:color = '#ffffff'
-        stroke = max(1,round(self.dpi/96)) if self.panel.settings.get('hdr_mode',True) else 1
+        stroke = max(1,round(self.dpi/96))
         offsets = [(-stroke,0),(stroke,0),(0,-stroke),(0,stroke),
                    (-stroke,-stroke),(stroke,-stroke),(-stroke,stroke),(stroke,stroke)]
         for phase_id,clock_id,(dx,dy) in zip(self.phase_shadow,self.clock_shadow,offsets):

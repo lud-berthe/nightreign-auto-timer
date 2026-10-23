@@ -1,10 +1,11 @@
 {
   "source": "",
   "edit_hotkey": "F10",
+  "overlay_font": 34,
   "overlay_background_opacity": 0.5,
   "overlay_hidden": false,
   "overlay_anchor_x": 0.5,
   "overlay_anchor_y": 0.0,
-  "overlay_font": 34,
-  "hdr_mode": true
+  "overlay_x": null,
+  "overlay_y": null
 }

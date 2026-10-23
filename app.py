@@ -21,6 +21,11 @@ from hotkeys import parse_edit_hotkey
 
 ROOT = Path(__file__).resolve().parent
 CONFIG = ROOT/'settings.json'
+SETTINGS_DEFAULTS = {
+    'source':'','edit_hotkey':'F10','overlay_font':34,
+    'overlay_background_opacity':0.5,'overlay_hidden':False,
+    'overlay_anchor_x':0.5,'overlay_anchor_y':0.0,'overlay_x':None,'overlay_y':None,
+}
 BG,TEXT,MUTED = '#10151c','#edf2f7','#98a7b8'
 LOG_ENABLED = True
 LOG_LOCK = threading.Lock()
@@ -44,34 +49,29 @@ def find_source():
 
 
 def load_settings():
-    values = {'source':'','auto_start':True,'auto_day2':True,'first':271.75,'second':662.1,
-              'shrink_first':180.35,'shrink_second':177.1,'day2_shift':0,'hdr_mode':True,
-              'overlay_font':34,'overlay_x':None,'overlay_y':None,'overlay_hidden':False,
-              'overlay_anchor_x':0.5,'overlay_anchor_y':0.0,'overlay_background':False,
-              'overlay_background_opacity':0.5,'edit_hotkey':'F10'}
+    values = SETTINGS_DEFAULTS.copy()
     try:
         saved = json.loads(CONFIG.read_text(encoding='utf-8'))
+        if not isinstance(saved,dict):saved = {}
         values.update({key:saved[key] for key in values if key in saved})
-        if 'overlay_background_opacity' not in saved:
-            values['overlay_background_opacity'] = 1.0 if values['overlay_background'] else 0.5
+        # Migrate the old background switch, but never save it again.
+        if 'overlay_background_opacity' not in saved and saved.get('overlay_background') is True:
+            values['overlay_background_opacity'] = 1.0
         if (values['overlay_anchor_y']==0.02 and values['overlay_x'] is None and values['overlay_y'] is None):
             values['overlay_anchor_y']=0.0
     except (OSError,ValueError,TypeError):pass
-    if not isinstance(values['source'],str) or not values['source']:values['source'] = find_source()
-    for key,fallback in [('first',271.75),('second',662.1),('shrink_first',180.35),('shrink_second',177.1)]:
-        if not isinstance(values[key],(int,float)) or not isfinite(values[key]) or not 0<values[key]<3600:values[key] = fallback
-    if values['second']<=values['first']+values['shrink_first']:
-        values.update(first=271.75,second=662.1,shrink_first=180.35)
-    for key,lo,hi,fallback in [('day2_shift',-60,60,0),('overlay_font',20,72,34)]:
-        if not isinstance(values[key],int) or not lo<=values[key]<=hi:values[key] = fallback
-    if values['first']+values['day2_shift']<=0:values['day2_shift'] = 0
+    if not isinstance(values['source'],str):values['source'] = ''
+    font = values['overlay_font']
+    if type(font) is not int or not 20<=font<=72:values['overlay_font'] = 34
+    if not isinstance(values['overlay_hidden'],bool):values['overlay_hidden'] = False
     for key,fallback in [('overlay_anchor_x',0.5),('overlay_anchor_y',0.0)]:
-        if not isinstance(values[key],(int,float)) or not isfinite(values[key]) or not 0<=values[key]<=1:
+        value = values[key]
+        if type(value) not in (int,float) or not isfinite(value) or not 0<=value<=1:
             values[key] = fallback
     for key in ('overlay_x','overlay_y'):
-        if values[key] is not None and not isinstance(values[key],int):values[key] = None
+        if values[key] is not None and type(values[key]) is not int:values[key] = None
     opacity = values['overlay_background_opacity']
-    if not isinstance(opacity,(int,float)) or not isfinite(opacity):opacity = 0.5
+    if type(opacity) not in (int,float) or not isfinite(opacity):opacity = 0.5
     values['overlay_background_opacity'] = max(0.0,min(1.0,opacity))
     try:values['edit_hotkey']=parse_edit_hotkey(values['edit_hotkey'])[0]
     except ValueError:values['edit_hotkey']='F10'
@@ -82,12 +82,11 @@ class Panel:
     def __init__(self, root, background=True):
         self.root,self.ephemeral = root,not background
         self.settings = load_settings()
-        self.source = self.settings['source']
+        self.source = self.settings['source'] or find_source()
         self.events = queue.Queue()
         self.stop_event = threading.Event()
         self.threads = []
         self.engine = TimerEngine()
-        self.engine.auto_start,self.engine.auto_day2 = bool(self.settings['auto_start']),bool(self.settings['auto_day2'])
         self.latest,self.read_error,self.gamebar = None,None,None
         self.last_phase,self.last_tracking,self.last_state_write = None,None,0
         self.root.title('Nightreign auto-timer')
@@ -150,7 +149,8 @@ class Panel:
         if self.ephemeral:return
         try:
             path = CONFIG.with_suffix('.tmp')
-            path.write_text(json.dumps(self.settings,ensure_ascii=False,indent=2),encoding='utf-8')
+            preferences = {key:self.settings.get(key,default) for key,default in SETTINGS_DEFAULTS.items()}
+            path.write_text(json.dumps(preferences,ensure_ascii=False,indent=2),encoding='utf-8')
             path.replace(CONFIG)
         except OSError as exc:log_event('settings_error',error=str(exc))
 
@@ -222,8 +222,6 @@ class Panel:
             elif kind=='read_error':self.read_error = value
             elif kind=='source_changed':
                 self.engine.reset_source()
-                self.settings['source'] = value
-                self.save_settings()
                 log_event('source_changed',source=value)
             elif kind=='edit':self.overlay.toggle_edit()
             elif kind=='hotkey' and not value:
@@ -233,7 +231,7 @@ class Panel:
             result = self.engine.observe_window(self.overlay.game is not None,now)
             if result:log_event(result)
         elapsed = self.engine.elapsed(now)
-        phase = phase_at(self.engine.day,elapsed,self.settings)
+        phase = phase_at(self.engine.day,elapsed)
         title,clock = compact_text(phase,self.read_error is not None)
         self.phase_label.configure(text=title)
         self.timer_label.configure(text=clock,fg=countdown_color(phase))
