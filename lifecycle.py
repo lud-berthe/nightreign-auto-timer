@@ -1,7 +1,9 @@
 """Opt-in automatic launch/close; no game-process handles or memory access."""
+import hashlib
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 
 
 RUN_KEY = r'Software\Microsoft\Windows\CurrentVersion\Run'
@@ -9,7 +11,7 @@ RUN_VALUE = 'NightreignAutoTimer'
 
 
 class GameLifecycle:
-    def __init__(self, close_delay=5, initially_running=False):
+    def __init__(self, close_delay=0, initially_running=False):
         self.running = initially_running
         self.missing_since = None
         self.close_delay = close_delay
@@ -22,7 +24,7 @@ class GameLifecycle:
                 return 'opened'
         elif self.running:
             if self.missing_since is None:self.missing_since = now
-            elif now-self.missing_since >= self.close_delay:
+            if now-self.missing_since >= self.close_delay:
                 self.running = False
                 self.missing_since = None
                 return 'closed'
@@ -31,11 +33,14 @@ class GameLifecycle:
 
 class InstanceLock:
     def __init__(self, directory, role):
-        self.path = Path(directory)/f'.timer-{role}.lock'
+        identity = os.path.normcase(str(Path(directory).resolve()))
+        namespace = hashlib.sha256(identity.encode('utf-8')).hexdigest()[:24]
+        self.path = Path(tempfile.gettempdir())/'NightreignAutoTimer'/namespace/f'{role}.lock'
         self.stream = None
 
     def acquire(self):
         if self.stream is not None:return True
+        self.path.parent.mkdir(parents=True,exist_ok=True)
         stream = self.path.open('a+b')
         if stream.tell()==0:
             stream.write(b'0');stream.flush()

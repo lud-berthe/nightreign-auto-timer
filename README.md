@@ -8,7 +8,7 @@ Automatic day and storm timer for Elden Ring Nightreign on Windows. A desktop wi
 
 Run **Nightreign auto-timer.exe**. Python, a mod loader and additional asset files are not needed. You can move the executable into your preferred writable folder.
 
-The app reads **settings.json next to the executable** and creates it immediately on first launch if it is missing. Keep that JSON beside the executable when moving the app to preserve your preferences. Launching from another working directory or a shortcut does not change the settings location. Logs and runtime diagnostics are also stored beside the executable.
+The app reads **settings.json next to the executable** and creates it immediately on first launch if it is missing. Keep that JSON beside the executable when moving the app to preserve your preferences. Launching from another working directory or a shortcut does not change the settings location. Normal use creates no other files beside the executable.
 
 ## Run from source
 
@@ -32,7 +32,7 @@ The source launcher prefers a built executable in dist, then the local virtual e
 The desktop window has two independent checkboxes, both off by default:
 
 - **Open automatically with Nightreign** starts a hidden watcher immediately and adds it to the current user's Windows startup. It opens one timer window when Nightreign appears. Closing the timer manually keeps it closed for the rest of that game session; the next launch of Nightreign can open it again. Unchecking the option removes Windows startup and stops the watcher.
-- **Close automatically with Nightreign** closes the timer when a previously detected game window has been gone for five seconds. Minimizing the game or switching to another app does not trigger it. This option works independently of automatic opening.
+- **Close automatically with Nightreign** closes the timer as soon as the previously detected game window disappears (normally within a fraction of a second). Minimizing the game or switching to another app does not trigger it. This option works independently of automatic opening.
 
 Closing the timer window always closes the timer itself. If automatic opening is enabled, the separate watcher remains in the background. Keep the executable in place while this option is enabled; if you move it, open the app once from its new location to update Windows startup. No administrator rights are required.
 
@@ -74,7 +74,7 @@ Only user preferences are saved. Position values are managed by the overlay edit
 
 Shortcut examples include F9, Ctrl+E and Ctrl+Alt+F10. F1–F24, A–Z, 0–9 and common navigation keys are supported, with optional Ctrl, Alt and Shift. Invalid values fall back to F10; the desktop hint reports conflicts with another app.
 
-Runtime diagnostics are written to **timer.log.jsonl** and **runtime-state.json** and are also excluded from Git. The application does not record or copy game saves.
+Only the executable and **settings.json** are needed in the app folder. Instance coordination uses tiny lock files in the Windows temporary folder. Troubleshooting data is off by default; launch with **--diagnostics** to write logs and runtime state in a **.diagnostics/** subfolder. The application does not record or copy game saves.
 
 ## Detection and limits
 
@@ -105,6 +105,7 @@ Windowed and borderless modes are supported. Actual HDR appearance and exclusive
 | layered_background.py | Transparent background with soft side edges |
 | game_window.py | Window bounds and DPI metadata |
 | hotkeys.py | Configurable shortcut parsing |
+| desktop_controls.py | DPI-aware desktop checkboxes |
 | lifecycle.py | Automatic opening/closing, Windows startup and instance coordination |
 | gamebar_view.py / gamebar.html | Optional local browser view |
 | tests/ | Portable unit tests, synthetic fixtures and GUI smoke check |

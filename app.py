@@ -21,6 +21,7 @@ from gamebar_view import GameBarView
 from hotkeys import parse_edit_hotkey
 from lifecycle import GameLifecycle,InstanceLock,instance_running,configure_startup,launch_process
 from game_window import GameWindowTracker
+from desktop_controls import AutomationCheck
 
 RESOURCES = Path(__file__).resolve().parent
 
@@ -38,7 +39,7 @@ SETTINGS_DEFAULTS = {
     'overlay_anchor_x':0.5,'overlay_anchor_y':0.0,'overlay_x':None,'overlay_y':None,
 }
 BG,TEXT,MUTED = '#10151c','#edf2f7','#98a7b8'
-LOG_ENABLED = True
+LOG_ENABLED = False
 LOG_LOCK = threading.Lock()
 
 
@@ -46,8 +47,10 @@ def log_event(kind, **values):
     if not LOG_ENABLED:return
     with LOG_LOCK:
         try:
-            path = ROOT/'timer.log.jsonl'
-            if path.exists() and path.stat().st_size>2*1024*1024:path.replace(ROOT/'timer.previous.jsonl')
+            folder = ROOT/'.diagnostics'
+            folder.mkdir(exist_ok=True)
+            path = folder/'timer.log.jsonl'
+            if path.exists() and path.stat().st_size>2*1024*1024:path.replace(folder/'timer.previous.jsonl')
             with path.open('a',encoding='utf-8') as stream:
                 stream.write(json.dumps({'time':time.time(),'kind':kind,**values},ensure_ascii=False)+'\n')
         except OSError:pass
@@ -150,13 +153,16 @@ class Panel:
         self.hint_label.pack(pady=(8,0))
         self.open_with_game = tk.BooleanVar(root,value=self.settings['open_with_game'])
         self.close_with_game = tk.BooleanVar(root,value=self.settings['close_with_game'])
+        tk.Frame(body,bg='#28323e',height=1).pack(fill='x',pady=(16,10))
+        tk.Label(body,text='GAME SYNC',bg=BG,fg=MUTED,font=('Segoe UI',8,'bold'),
+                 anchor='w').pack(fill='x',pady=(0,6))
+        options = tk.Frame(body,bg='#171e27')
+        options.pack(fill='x')
         self.automation_checks = []
         for label,variable in [('Open automatically with Nightreign',self.open_with_game),
                                ('Close automatically with Nightreign',self.close_with_game)]:
-            check = tk.Checkbutton(body,text=label,variable=variable,command=self.update_automation,
-                                   bg=BG,fg=TEXT,selectcolor=BG,activebackground=BG,activeforeground=TEXT,
-                                   font=('Segoe UI',8),anchor='w',highlightthickness=0)
-            check.pack(fill='x',pady=(3,0))
+            check = AutomationCheck(options,text=label,variable=variable,command=self.update_automation)
+            check.pack(fill='x')
             self.automation_checks.append(check)
         self.overlay = CompactOverlay(self)
         self.root.update_idletasks()
@@ -168,7 +174,6 @@ class Panel:
         if background:
             try:
                 self.gamebar = GameBarView()
-                (ROOT/'gamebar-url.txt').write_text(self.gamebar.url,encoding='utf-8')
             except OSError as exc:log_event('gamebar_unavailable',error=str(exc))
             for target in (self.watch_save,self.watch_keys):
                 thread = threading.Thread(target=target,daemon=True)
@@ -182,6 +187,8 @@ class Panel:
                 self.hint_label.configure(text='Automatic opening could not be enabled',fg='#ebbc78')
                 log_event('automatic_open_error',error=str(exc))
         log_event('app_opened',source=self.source)
+        # Establish the current window before the first close-on-exit decision.
+        if background:self.overlay.game = self.overlay.tracker.current()
         self.tick()
 
     def update_automation(self):
@@ -329,27 +336,30 @@ class Panel:
         if tracking_id!=self.last_tracking:
             self.last_tracking = tracking_id
             log_event('window_tracking',**tracking)
-        if not self.ephemeral and now-self.last_state_write>=1:
+        if LOG_ENABLED and not self.ephemeral and now-self.last_state_write>=1:
             self.last_state_write = now
             try:
                 state = {'day':self.engine.day,'source':'save','process_memory':False,
                          'save_session_suspended':self.engine.suspended_run is not None,
                          'started_at':wall-elapsed if self.engine.started_at is not None else None,
                          'origin':self.engine.origin,'phase':phase.key,'elapsed':elapsed,'overlay':tracking}
-                path = ROOT/'runtime-state.tmp'
+                folder = ROOT/'.diagnostics'
+                folder.mkdir(exist_ok=True)
+                path = folder/'runtime-state.tmp'
                 path.write_text(json.dumps(state,ensure_ascii=False,indent=2),encoding='utf-8')
-                path.replace(ROOT/'runtime-state.json')
+                path.replace(folder/'runtime-state.json')
             except OSError:pass
-        if not self.stop_event.is_set():self.root.after(200,self.tick)
+        if not self.stop_event.is_set():self.root.after(100,self.tick)
 
     def close(self):
         if self.stop_event.is_set():return
         self.stop_event.set()
+        # Remove both desktop and overlay windows before waiting for workers.
+        self.root.destroy()
         self.save_settings()
         if self.gamebar:self.gamebar.close()
         for thread in self.threads:thread.join(timeout=1)
         log_event('app_closed')
-        self.root.destroy()
         if self.shell_icon:
             api = ctypes.WinDLL('user32')
             api.DestroyIcon.argtypes = [wintypes.HICON]
@@ -362,12 +372,13 @@ def main():
     global LOG_ENABLED
     parser = argparse.ArgumentParser()
     parser.add_argument('--self-test',action='store_true')
+    parser.add_argument('--diagnostics',action='store_true',help='Write troubleshooting data to .diagnostics.')
     parser.add_argument('--watch',action='store_true',help=argparse.SUPPRESS)
     parser.add_argument('--from-game',action='store_true',help=argparse.SUPPRESS)
     parser.add_argument('--resume-day',type=int,choices=(1,2,3),help=argparse.SUPPRESS)
     parser.add_argument('--resume-start',type=float,help=argparse.SUPPRESS)
     args = parser.parse_args()
-    LOG_ENABLED = not (args.self_test or args.watch)
+    LOG_ENABLED = args.diagnostics and not (args.self_test or args.watch)
     if (args.resume_day is None)!=(args.resume_start is None):parser.error('Resuming requires a day and a start time.')
     if args.resume_start is not None and not 0<=time.time()-args.resume_start<86400:parser.error('Invalid resume start time.')
     if os.name=='nt':
@@ -398,6 +409,7 @@ def main():
 def run_window(args):
     root = tk.Tk();root.withdraw()
     panel = Panel(root,background=not args.self_test,from_game=args.from_game)
+    if panel.stop_event.is_set():return
     if args.resume_day is not None:
         panel.engine.start(args.resume_day,time.monotonic(),time.time()-args.resume_start,
                            'Automatic start · estimated from save file')

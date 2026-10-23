@@ -38,3 +38,6 @@ Desktop.ini
 
 # Released automatically when the app or watcher exits
 /.timer-*.lock
+
+# Optional troubleshooting data
+/.diagnostics/

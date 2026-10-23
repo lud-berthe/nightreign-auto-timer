@@ -15,16 +15,20 @@ from lifecycle import GameLifecycle,InstanceLock,instance_running
 class GameLifecycleTests(unittest.TestCase):
     def test_game_exit_during_timer_startup_still_closes_an_auto_started_timer(self):
         session=GameLifecycle(initially_running=True)
-        self.assertIsNone(session.observe(False,0))
-        self.assertEqual(session.observe(False,5),'closed')
+        self.assertEqual(session.observe(False,0),'closed')
+
+    def test_default_closes_on_first_missing_window_observation(self):
+        session=GameLifecycle()
+        self.assertEqual(session.observe(True,10),'opened')
+        self.assertEqual(session.observe(False,10.1),'closed')
 
     def test_no_close_before_a_game_has_been_seen(self):
         session=GameLifecycle()
         self.assertIsNone(session.observe(False,0))
         self.assertIsNone(session.observe(False,100))
 
-    def test_game_disappearance_has_a_grace_period(self):
-        session=GameLifecycle()
+    def test_optional_grace_period(self):
+        session=GameLifecycle(close_delay=5)
         self.assertEqual(session.observe(True,0),'opened')
         self.assertIsNone(session.observe(False,1))
         self.assertIsNone(session.observe(False,5.9))
@@ -32,8 +36,8 @@ class GameLifecycleTests(unittest.TestCase):
         self.assertIsNone(session.observe(False,7))
         self.assertEqual(session.observe(True,8),'opened')
 
-    def test_a_temporary_window_loss_does_not_close_the_timer(self):
-        session=GameLifecycle()
+    def test_a_temporary_window_loss_with_explicit_grace(self):
+        session=GameLifecycle(close_delay=5)
         session.observe(True,0);session.observe(False,1)
         self.assertIsNone(session.observe(True,3))
         self.assertIsNone(session.observe(False,4))
@@ -67,6 +71,18 @@ class GameLifecycleTests(unittest.TestCase):
 
 
 class InstanceTests(unittest.TestCase):
+    def test_coordination_does_not_create_files_beside_the_executable(self):
+        with tempfile.TemporaryDirectory() as folder:
+            lock=InstanceLock(folder,'window')
+            self.assertTrue(lock.acquire())
+            try:self.assertEqual(list(Path(folder).iterdir()),[])
+            finally:lock.release()
+
+    def test_installations_do_not_share_the_same_lock(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self.assertNotEqual(InstanceLock(Path(folder)/'a','window').path,
+                                InstanceLock(Path(folder)/'b','window').path)
+
     def test_window_and_watcher_are_independent_and_released(self):
         with tempfile.TemporaryDirectory() as folder:
             window=InstanceLock(folder,'window');watcher=InstanceLock(folder,'watcher')
